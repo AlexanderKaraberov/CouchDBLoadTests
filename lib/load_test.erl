@@ -1,20 +1,28 @@
-% Created by Oleksandr Karaberov on 31.07.18.
-% Licensed under the Apache License, Version 2.0 (the "License"); you may not
-% use this file except in compliance with the License. You may obtain a copy of
-% the License at
-%
-%   http://www.apache.org/licenses/LICENSE-2.0
-%
-% Unless required by applicable law or agreed to in writing, software
-% distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-% WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
-% License for the specific language governing permissions and limitations under
-% the License.
+%% @author Oleksandr Karaberov <alexander.karaberov@gmail.com>
+%% @copyright 2018
+%%
+%% Permission is hereby granted, free of charge, to any person obtaining a
+%% copy of this software and associated documentation files (the "Software"),
+%% to deal in the Software without restriction, including without limitation
+%% the rights to use, copy, modify, merge, publish, distribute, sublicense,
+%% and/or sell copies of the Software, and to permit persons to whom the
+%% Software is furnished to do so, subject to the following conditions:
+%%
+%% The above copyright notice and this permission notice shall be included in
+%% all copies or substantial portions of the Software.
+%%
+%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+%% THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+%% FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+%% DEALINGS IN THE SOFTWARE.
 
 
 - module(load_test).
-- export([start/2]).
-- vsn(2).
+- export([dbs/1, docs/1, reads/2, reads/3]).
+- vsn(3).
 
 
 for(N,N,F) ->
@@ -40,7 +48,7 @@ get_all_lines(Device) ->
         end,
     re:replace(L, "\n", "", [{return,list}]).
 
-start(N, dbs) ->
+dbs(N) ->
   _ = inets:start(),
   io:format("Load test for CouchDB started with ~p processes...~n", [N]),
   Self = self(),
@@ -75,8 +83,9 @@ start(N, dbs) ->
    end) end),
    [receive {Pid, finished} -> Pid end || Pid <- Pids],
    io:format("Load test for CouchDB finished~n", []),
-   ok;
-start(N, docs) ->
+   ok.
+
+docs(N) ->
   _ = inets:start(),
 
   DbSuffix = integer_to_list(rand:uniform(1000000000000000000)),
@@ -118,8 +127,12 @@ start(N, docs) ->
     Self ! {self(), finished}
  end) end),
   [receive {Pid, finished} -> Pid end || Pid <- Pids],
-  dispose(Url);
-start(N, {reads, Distribution}) ->
+  dispose(Url).
+
+reads(N, Distribution) ->
+    reads(N, Distribution, default).
+
+reads(N, Distribution, R) ->
   _ = inets:start(),
 
   if N < 2 ->
@@ -166,7 +179,8 @@ start(N, {reads, Distribution}) ->
   end) end),
 
   ReadPids = [receive {WPid, finished_write, Suffix} ->
-    DocUrl = Url ++ "/" ++ DocPrefix ++ Suffix,
+    DocUrl0 = Url ++ "/" ++ DocPrefix ++ Suffix,
+    DocUrl = if R =/= default -> DocUrl0 ++ "?r=" ++ integer_to_list(R); true -> DocUrl0 end,
     RPids = for(1, RBatchLimit, fun(_) -> spawn_link(fun() ->
     {ok, {{_Version2, _Code2, _ReasonPhrase2}, _Headers2, _Body2}}  =
          httpc:request(get, {DocUrl, []}, [], [{sync,true}]),
